@@ -1,0 +1,27 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+uploads/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local database files and exported backups
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.dump.gz
+*.sql.gz
+*.backup
+*.bak
+backup_*.sql
+backups/
+
+# Local logs
+*.log
+npm-debug.log*
+
