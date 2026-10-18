@@ -922,3 +922,53 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   .settings-toggle { min-height: 64px; padding: 10px 11px; }
   .settings-toggle__copy small { max-width: 190px; }
 }
+
+.pwa-offline-notice,
+.pwa-update-notice {
+  position: fixed;
+  z-index: 12000;
+  right: 12px;
+  left: 12px;
+  width: auto;
+  max-width: 720px;
+  margin: 0 auto;
+  border-radius: 16px;
+  padding: 12px 16px;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 0.2);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.pwa-offline-notice {
+  top: 12px;
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  background: #7c2d12;
+}
+
+.pwa-offline-notice strong { flex: 0 0 auto; }
+
+.pwa-update-notice {
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: #0f172a;
+}
+
+.pwa-update-notice__copy { display: flex; flex-direction: column; gap: 3px; }
+.pwa-update-notice__copy strong { font-size: 0.95rem; }
+.pwa-update-notice__copy span { color: #e2e8f0; }
+.pwa-update-notice__actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.pwa-update-notice__actions button { min-width: 64px; min-height: 44px; border: 1px solid #94a3b8; border-radius: 11px; padding: 0 12px; color: #fff; background: transparent; font: inherit; font-weight: 700; }
+.pwa-update-notice__actions .pwa-update-notice__apply { border-color: #14b8a6; color: #042f2e; background: #5eead4; }
+.pwa-update-notice__actions button:focus-visible { outline: 3px solid #99f6e4; outline-offset: 3px; }
+
+@media (max-width: 520px) {
+  .pwa-update-notice { align-items: stretch; flex-direction: column; }
+  .pwa-update-notice__actions { justify-content: flex-end; }
+}

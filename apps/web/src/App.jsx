@@ -16,6 +16,8 @@ import RewardsManagement from "./pages/merchant/RewardsManagement.jsx";
 import TransactionHistory from "./pages/merchant/TransactionHistory.jsx";
 import Settings from "./pages/merchant/Settings.jsx";
 import { api, ApiError } from "./lib/api.js";
+import { NetworkStatusProvider } from "./context/NetworkStatusContext.jsx";
+import PwaRuntimeNotices from "./components/PwaRuntimeNotices.jsx";
 
 function ProtectedRoute({ children, allowedRole }) {
   const location = useLocation();
@@ -65,5 +67,12 @@ function AppRoutes() {
 }
 
 export default function App() {
-  return <BrowserRouter><AuthProvider><AppRoutes /></AuthProvider></BrowserRouter>;
+  return (
+    <BrowserRouter>
+      <NetworkStatusProvider>
+        <PwaRuntimeNotices />
+        <AuthProvider><AppRoutes /></AuthProvider>
+      </NetworkStatusProvider>
+    </BrowserRouter>
+  );
 }

@@ -119,3 +119,13 @@ docker compose down
 
 `docker compose down` 會刻意保留具名磁碟區。只有在明確確認本機 V2 資料庫與物件儲存測試資料可以丟棄時，才移除這些磁碟區。
 
+## PWA（Android 門市平板）
+
+V2 的 Web App Manifest 會讓安裝到平板的 LoyaltyLoop 以獨立視窗啟動，並直接開啟分店終端登入頁。Service Worker 只快取前端建置檔、離線提示頁與必要圖示；會員、登入、點數和交易 API 一律需要連線，不會快取或排隊。
+
+Service Worker 僅在 production build 中產生。可在 `apps/web` 執行 `npm run build`，再執行 `npm run preview`，於本機 `http://localhost:4173` 驗證 production build。平板實機安裝需使用 HTTPS 網址；連到電腦的區網 HTTP 位址不適合作為 Service Worker 的安裝驗收環境。
+
+在 Android Chrome 開啟 HTTPS 測試網址後，從瀏覽器選單選擇「安裝應用程式」或「加到主畫面」（名稱會依瀏覽器版本略有不同）。安裝後從桌面圖示啟動，應直接進入終端登入頁，且不顯示 Chrome 網址列。Android 系統狀態列仍可能顯示，若需鎖定平板操作，需另外設定裝置的螢幕固定或 kiosk 模式。
+
+實機驗收：首次安裝前保持連線；確認終端登入、會員查詢、集點、兌換與音效正常；關閉網路後確認離線提示出現，登入與點數操作不可用；重新連線後確認可正常操作。發布新版本後，確認更新提示出現，並在完成目前操作後手動更新，避免交易進行中自動重載。
+

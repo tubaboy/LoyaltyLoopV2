@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api.js";
+import { useNetworkStatus } from "../context/NetworkStatusContext.jsx";
 
 const PHONE_LENGTH = 10;
 
@@ -94,6 +95,7 @@ function positiveSeconds(value) {
 }
 
 export default function CustomerTerminal({ terminal }) {
+  const isOnline = useNetworkStatus();
   const navigate = useNavigate();
   const phoneDisplayRef = useRef(null);
   const effectCanvasRef = useRef(null);
@@ -671,6 +673,10 @@ export default function CustomerTerminal({ terminal }) {
 
   async function lookupCustomer(event) {
     event?.preventDefault();
+    if (!isOnline) {
+      setError("目前沒有網路連線，請恢復連線後再查詢會員。");
+      return;
+    }
     if (phone.length < PHONE_LENGTH) {
       setError(`請輸入完整的 ${PHONE_LENGTH} 位手機號碼`);
       return;
@@ -704,7 +710,10 @@ export default function CustomerTerminal({ terminal }) {
 
   async function changePoints(action, requestedAmount) {
     const value = Number(requestedAmount);
-    if (!phone || !Number.isInteger(value) || value < 1 || loading) return;
+    if (!isOnline || !phone || !Number.isInteger(value) || value < 1 || loading) {
+      if (!isOnline) setError("目前沒有網路連線，點數操作未送出；請恢復連線後重試。");
+      return;
+    }
 
     clearResetTimer();
     resetReminderTimer();
@@ -867,7 +876,7 @@ export default function CustomerTerminal({ terminal }) {
                   <Delete size={42} strokeWidth={1.8} aria-hidden="true" />
                 </button>
               </div>
-              <button type="button" className="legacy-terminal-start" onClick={lookupCustomer} disabled={phone.length < PHONE_LENGTH || loading}>
+              <button type="button" className="legacy-terminal-start" onClick={lookupCustomer} disabled={!isOnline || phone.length < PHONE_LENGTH || loading}>
                 {loading ? <><Loader2 size={24} className="spin" aria-hidden="true" />查詢中...</> : <>開始操作 <ArrowRight size={25} aria-hidden="true" /></>}
               </button>
             </section>
@@ -894,7 +903,7 @@ export default function CustomerTerminal({ terminal }) {
 
             <article className="legacy-terminal-quick-card">
               <h2>快速操作 <span>ACTIONS</span></h2>
-              <button type="button" onClick={openCustomPoints} disabled={loading}>
+              <button type="button" onClick={openCustomPoints} disabled={!isOnline || loading}>
                 <Plus size={27} aria-hidden="true" />
                 <span>自訂點數</span>
               </button>
@@ -926,7 +935,7 @@ export default function CustomerTerminal({ terminal }) {
                 {addOptions.length > 0 ? addOptions.map((option) => {
                   const value = getOptionValue(option);
                   return (
-                    <button key={option.id} type="button" onClick={() => changePoints("add", value)} disabled={loading}>
+                    <button key={option.id} type="button" onClick={() => changePoints("add", value)} disabled={!isOnline || loading}>
                       <strong>+{value}</strong>
                       <small>{getOptionLabel(option)}</small>
                     </button>
@@ -962,7 +971,7 @@ export default function CustomerTerminal({ terminal }) {
                         key={option.id}
                         type="button"
                         className={canRedeem ? "is-available" : "is-disabled"}
-                        disabled={loading || !canRedeem}
+                        disabled={!isOnline || loading || !canRedeem}
                         onClick={() => changePoints("redeem", value)}
                       >
                         <span>
@@ -1003,7 +1012,7 @@ export default function CustomerTerminal({ terminal }) {
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((number) => <button key={number} type="button" onClick={() => handleCustomDigit(String(number))}>{number}</button>)}
               <button type="button" className="is-muted" onClick={() => setCustomAmount("")}>清除</button>
               <button type="button" onClick={() => handleCustomDigit("0")}>0</button>
-              <button type="button" className="is-primary" onClick={handleCustomSubmit} disabled={!customAmount || loading}>確認</button>
+              <button type="button" className="is-primary" onClick={handleCustomSubmit} disabled={!isOnline || !customAmount || loading}>確認</button>
             </div>
             <button type="button" className="legacy-terminal-custom-cancel" onClick={() => setCustomOpen(false)}><Wrench size={16} />取消並返回</button>
           </section>

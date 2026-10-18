@@ -3,6 +3,7 @@ import { ArrowLeft, LoaderCircle, Maximize, Monitor } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Brand, ErrorMessage } from "../components/Brand.jsx";
 import { api } from "../lib/api.js";
+import { useNetworkStatus } from "../context/NetworkStatusContext.jsx";
 
 function isValidTerminalKey(value) {
   return /^(?:[A-Z0-9]{8}|[A-Z0-9]{12})$/.test(value);
@@ -10,6 +11,7 @@ function isValidTerminalKey(value) {
 
 export default function TerminalLogin() {
   const navigate = useNavigate();
+  const isOnline = useNetworkStatus();
   const [key, setKey] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,6 +22,10 @@ export default function TerminalLogin() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!isOnline) {
+      setError("目前沒有網路連線，請恢復連線後再登入。");
+      return;
+    }
     if (!isValidTerminalKey(key)) {
       setError("請輸入完整的 8 碼登入金鑰（商家代碼 + 4 位數字）");
       return;
@@ -46,7 +52,7 @@ export default function TerminalLogin() {
           <label className="sr-only" htmlFor="terminal-key">分店登入金鑰</label>
           <input id="terminal-key" className="terminal-key-input" type="text" inputMode="text" autoCapitalize="characters" autoComplete="off" spellCheck="false" autoFocus value={key} onChange={(event) => setKey(event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12))} placeholder="5TZT1234" maxLength={12} />
           <ErrorMessage message={error} />
-          <button type="submit" className="button button--primary button--large" disabled={loading || !isValidTerminalKey(key)}>{loading ? <LoaderCircle className="spin" size={20} aria-hidden="true" /> : "進入集點系統"}</button>
+          <button type="submit" className="button button--primary button--large" disabled={!isOnline || loading || !isValidTerminalKey(key)}>{loading ? <LoaderCircle className="spin" size={20} aria-hidden="true" /> : "進入集點系統"}</button>
         </form>
       </section>
     </main>

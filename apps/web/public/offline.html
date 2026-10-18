@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d9488" />
+    <title>目前離線｜LoyaltyLoop</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #0f172a; background: #f8fafc; }
+      * { box-sizing: border-box; }
+      body { display: grid; min-height: 100vh; margin: 0; padding: 24px; place-items: center; }
+      main { width: 100%; max-width: 440px; padding: 32px 24px; border: 1px solid #e2e8f0; border-radius: 24px; background: #fff; text-align: center; box-shadow: 0 12px 32px rgb(15 23 42 / 0.08); }
+      img { width: 72px; height: 72px; object-fit: contain; }
+      h1 { margin: 20px 0 10px; font-size: 1.5rem; }
+      p { color: #475569; line-height: 1.6; }
+      button { min-height: 48px; margin-top: 12px; padding: 0 22px; border: 0; border-radius: 14px; color: #fff; background: #0d9488; font: inherit; font-weight: 700; }
+      button:focus-visible { outline: 3px solid #14b8a6; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon-192.png" alt="" />
+      <h1>目前沒有網路連線</h1>
+      <p>門市終端需要連線才能登入、查詢會員及操作點數。請確認網路後再試一次。</p>
+      <button type="button" onclick="window.location.reload()">重新連線</button>
+    </main>
+  </body>
+</html>
