@@ -35,6 +35,8 @@ export interface TerminalAuthContext {
   screensaverTimeout: number;
   logoAssetId: string | null;
   screensaverAssetId: string | null;
+  collectionSoundAssetId: string | null;
+  redemptionSoundAssetId: string | null;
 }
 
 export type AccountRequest = Request & {
@@ -242,7 +244,9 @@ export async function getTerminalContextByToken(
        coalesce(bs.redemption_effect, 'confetti') as "redemptionEffect",
        coalesce(bs.screensaver_timeout, 0)::int as "screensaverTimeout",
        bs.logo_asset_id as "logoAssetId",
-       bs.screensaver_asset_id as "screensaverAssetId"
+       bs.screensaver_asset_id as "screensaverAssetId",
+       bs.collection_sound_asset_id as "collectionSoundAssetId",
+       bs.redemption_sound_asset_id as "redemptionSoundAssetId"
      from terminal_sessions ts
      join branches b on b.id = ts.branch_id
      join merchants m on m.id = b.merchant_id

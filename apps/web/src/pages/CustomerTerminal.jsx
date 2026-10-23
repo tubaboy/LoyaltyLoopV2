@@ -20,6 +20,8 @@ import { api } from "../lib/api.js";
 import { useNetworkStatus } from "../context/NetworkStatusContext.jsx";
 
 const PHONE_LENGTH = 10;
+const COIN_SHOWER_SIZE_MULTIPLIER = 1.45;
+const COIN_FLIP_SIZE_MULTIPLIER = 1.25;
 
 const TERMINAL_THEMES = {
   indigo: {
@@ -103,6 +105,7 @@ export default function CustomerTerminal({ terminal }) {
   const particlesRef = useRef([]);
   const logoImageRef = useRef(null);
   const audioRefs = useRef({ collection: null, redemption: null, reminder: null });
+  const defaultAudioRefs = useRef({ collection: null, redemption: null });
   const resetTimerRef = useRef(null);
   const reminderTimerRef = useRef(null);
   const reminderHideTimerRef = useRef(null);
@@ -211,13 +214,14 @@ export default function CustomerTerminal({ terminal }) {
   useEffect(() => {
     const collectionAudio = new Audio(`${import.meta.env.BASE_URL}coin.mp3`);
     const redemptionAudio = new Audio(`${import.meta.env.BASE_URL}celebration.mp3`);
-  const reminderAudio = new Audio(`${import.meta.env.BASE_URL}universfield-ringtone-021-365652.mp3`);
+    const reminderAudio = new Audio(`${import.meta.env.BASE_URL}universfield-ringtone-021-365652.mp3`);
     collectionAudio.preload = "auto";
     redemptionAudio.preload = "auto";
     reminderAudio.preload = "auto";
     collectionAudio.volume = 0.7;
     redemptionAudio.volume = 0.85;
     reminderAudio.volume = 0.55;
+    defaultAudioRefs.current = { collection: collectionAudio, redemption: redemptionAudio };
     audioRefs.current = { collection: collectionAudio, redemption: redemptionAudio, reminder: reminderAudio };
 
     return () => {
@@ -228,8 +232,47 @@ export default function CustomerTerminal({ terminal }) {
         audio.load();
       });
       audioRefs.current = { collection: null, redemption: null, reminder: null };
+      defaultAudioRefs.current = { collection: null, redemption: null };
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const customAudios = [];
+    const customSounds = [
+      { key: "collection", assetId: terminal?.collection_sound_asset_id, volume: 0.7 },
+      { key: "redemption", assetId: terminal?.redemption_sound_asset_id, volume: 0.85 },
+    ];
+
+    customSounds.forEach(({ key, assetId, volume }) => {
+      audioRefs.current[key] = defaultAudioRefs.current[key];
+      if (!assetId) return;
+      api.media.download(assetId)
+        .then((blob) => {
+          if (!mounted) return;
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.preload = "auto";
+          audio.volume = volume;
+          customAudios.push({ key, audio, url });
+          audioRefs.current[key] = audio;
+        })
+        .catch(() => {
+          // Keep the bundled default sound if a custom asset is unavailable.
+        });
+    });
+
+    return () => {
+      mounted = false;
+      customAudios.forEach(({ key, audio, url }) => {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+        URL.revokeObjectURL(url);
+        if (audioRefs.current[key] === audio) audioRefs.current[key] = defaultAudioRefs.current[key];
+      });
+    };
+  }, [terminal?.collection_sound_asset_id, terminal?.redemption_sound_asset_id]);
 
   useEffect(() => {
     const image = new Image();
@@ -322,7 +365,7 @@ export default function CustomerTerminal({ terminal }) {
       rotationSpeed: (Math.random() - 0.5) * 0.22,
       flip: Math.random() * Math.PI * 2,
       flipSpeed: (Math.random() - 0.5) * 0.22,
-      scale: Math.random() * 0.38 + 0.42,
+      scale: (Math.random() * 0.38 + 0.42) * COIN_SHOWER_SIZE_MULTIPLIER,
     }));
 
     const render = () => {
@@ -360,7 +403,7 @@ export default function CustomerTerminal({ terminal }) {
       y: height / 2,
       rotation: 0,
       flip: 0,
-      scale: 1.7,
+      scale: 1.05 * COIN_FLIP_SIZE_MULTIPLIER,
     };
 
     const render = (now) => {
@@ -371,7 +414,7 @@ export default function CustomerTerminal({ terminal }) {
       particle.y = height / 2;
       particle.rotation = eased * Math.PI * 2;
       particle.flip = eased * Math.PI * 6;
-      particle.scale = 1.05 + eased * 1.15;
+      particle.scale = (1.05 + eased * 1.15) * COIN_FLIP_SIZE_MULTIPLIER;
       context.globalAlpha = progress > 0.78 ? 1 - ((progress - 0.78) / 0.22) : 1;
       drawCoin(context, particle);
       context.globalAlpha = 1;

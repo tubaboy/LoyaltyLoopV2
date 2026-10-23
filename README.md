@@ -36,6 +36,13 @@ PostgreSQL、MinIO、API 與 Web 的對外埠僅綁定 `127.0.0.1`，只供本�
 
 資料庫初始化腳本只會建立 V2 schema，不會連線或匯入舊 LoyaltyLoop 系統。
 
+既有本機資料庫的結構更新會放在 `infra/postgres/migrations/`，不會重建或清空資料。套用新 migration 的 PowerShell 範例：
+
+```powershell
+Get-Content -Raw -Encoding utf8 infra/postgres/migrations/002_branch_custom_sounds.sql |
+  docker compose exec -T db sh -c 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
 ## 經授權的本機舊資料匯入
 
 資料遷移指令必須明確指定 `SOURCE_DATABASE_URL`，預設只會執行試跑。程式不會自行猜測來源資料庫。
@@ -64,6 +71,8 @@ docker compose exec -T `
 設定頁也支援 V2 分店操作：分店聯絡資訊與顯示設定、兌換上限、Terminal 效果與逾時設定。Terminal key 只有在使用者要求時才會產生，新金鑰固定為容易輸入的 8 位數字；資料庫只儲存 SHA-256 雜湊值，明文只會顯示一次，並且可以撤銷或重新產生。為了相容本機既有資料，先前產生的 12 碼 V2 英數金鑰仍可登入；重新產生後會改用 8 位數字金鑰。撤銷或重新產生 key 時，也會撤銷該分店目前有效的 Terminal 工作階段。
 
 設定頁的圖片資產區會顯示每個分店目前已儲存的 Logo 與待機畫面預覽；沒有圖片時會明確顯示尚未上傳。預覽透過登入權限讀取，不會公開圖片資產。
+
+分店設定也可分別上傳集點與兌換 MP3 音效（每個檔案上限 1 MB），可在後台試聽或恢復預設。沒有自訂音效時，終端沿用內建的 `coin.mp3` 與 `celebration.mp3`；替換或恢復預設後，已開啟的終端需重新載入設定。新音效會存放為受商家／分店權限保護的媒體資產，替換後不再被引用的舊檔會清理。
 
 目前本機 API 包含：
 

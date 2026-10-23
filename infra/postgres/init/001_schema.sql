@@ -57,7 +57,7 @@ CREATE TABLE media_assets (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   merchant_id uuid NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
   branch_id uuid REFERENCES branches(id) ON DELETE CASCADE,
-  kind text NOT NULL CHECK (kind IN ('logo', 'screensaver', 'other')),
+  kind text NOT NULL CHECK (kind IN ('logo', 'screensaver', 'collection_sound', 'redemption_sound', 'other')),
   object_key text NOT NULL UNIQUE,
   original_name text,
   mime_type text NOT NULL,
@@ -78,6 +78,8 @@ CREATE TABLE branch_settings (
   screensaver_timeout integer NOT NULL DEFAULT 0 CHECK (screensaver_timeout >= 0),
   logo_asset_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
   screensaver_asset_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
+  collection_sound_asset_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
+  redemption_sound_asset_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

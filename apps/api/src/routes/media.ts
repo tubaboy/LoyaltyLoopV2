@@ -21,7 +21,7 @@ export function createMediaRouter(pool: pg.Pool): Router {
       );
       const record = asset.rows[0];
       if (!record) {
-        response.status(404).json({ error: "找不到圖片資產" });
+        response.status(404).json({ error: "找不到媒體資產" });
         return;
       }
 
@@ -35,7 +35,7 @@ export function createMediaRouter(pool: pg.Pool): Router {
         (!record.branch_id || terminal.branchId === record.branch_id),
       );
       if (!accountCanRead && !terminalCanRead) {
-        response.status(404).json({ error: "找不到圖片資產" });
+        response.status(404).json({ error: "找不到媒體資產" });
         return;
       }
 

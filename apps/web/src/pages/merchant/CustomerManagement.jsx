@@ -1,10 +1,15 @@
-import { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Search, UserRound, X } from "lucide-react";
+import { ArrowDown, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, ArrowUpRight, Search, UserRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api.js";
 import { ErrorMessage, LoadingState } from "../../components/Brand.jsx";
 import { EmptyState } from "./MerchantDashboard.jsx";
 
 const PAGE_SIZE = 20;
+const customerSortOptions = {
+  points: { label: "目前點數", ascendingLabel: "由低到高", descendingLabel: "由高到低" },
+  transactions: { label: "交易筆數", ascendingLabel: "由少到多", descendingLabel: "由多到少" },
+  activity: { label: "最近活動", ascendingLabel: "由舊到新", descendingLabel: "由新到舊" },
+};
 
 const transactionLabels = {
   add: "發放",
@@ -29,6 +34,7 @@ export default function CustomerManagement() {
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [customers, setCustomers] = useState([]);
+  const [sort, setSort] = useState({ by: "activity", direction: "desc" });
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -56,6 +62,8 @@ export default function CustomerManagement() {
     api.merchant.customers({
       branchId: selectedBranch || undefined,
       search: searchQuery || undefined,
+      sortBy: sort.by,
+      sortDirection: sort.direction,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     })
@@ -67,7 +75,7 @@ export default function CustomerManagement() {
       .catch((loadError) => { if (mounted) setError(loadError.message ?? "無法載入會員資料"); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [selectedBranch, searchQuery, page]);
+  }, [selectedBranch, searchQuery, page, sort]);
 
   useEffect(() => {
     if (!selectedCustomerId) {
@@ -113,6 +121,36 @@ export default function CustomerManagement() {
     setDetailError("");
   }
 
+  function changeSort(sortBy) {
+    setSort((current) => ({
+      by: sortBy,
+      direction: current.by === sortBy && current.direction === "desc" ? "asc" : "desc",
+    }));
+    setPage(0);
+    clearSelection(setSelectedCustomerId, setDetail, setDetailError);
+  }
+
+  function renderSortHeader(sortBy) {
+    const option = customerSortOptions[sortBy];
+    const active = sort.by === sortBy;
+    const nextDirection = active && sort.direction === "desc" ? "asc" : "desc";
+    const directionLabel = nextDirection === "desc" ? option.descendingLabel : option.ascendingLabel;
+    const SortIcon = active ? (sort.direction === "desc" ? ArrowDown : ArrowUp) : ArrowUpDown;
+
+    return (
+      <button
+        className={`member-sort-button${active ? " member-sort-button--active" : ""}`}
+        type="button"
+        onClick={() => changeSort(sortBy)}
+        aria-label={`依${option.label}排序，點擊後${directionLabel}`}
+        title={active ? `${option.label}：${sort.direction === "desc" ? option.descendingLabel : option.ascendingLabel}` : `依${option.label}排序`}
+      >
+        {option.label}
+        <SortIcon size={15} aria-hidden="true" />
+      </button>
+    );
+  }
+
   if (branchesLoading) return <LoadingState label="載入會員資料…" />;
 
   return (
@@ -153,7 +191,7 @@ export default function CustomerManagement() {
             <div><span className="eyebrow">CUSTOMERS</span><h2>會員清單</h2></div>
             <span className="status-pill status-pill--muted">第 {page + 1} 頁 · {customers.length} 筆</span>
           </div>
-          {loading && customers.length === 0 ? <LoadingState label="同步會員資料中…" /> : customers.length === 0 ? <EmptyState title="沒有符合條件的會員" description="請調整分店或電話搜尋條件。" /> : <div className="table-wrap"><table className="data-table member-table"><thead><tr><th>會員電話</th><th>目前點數</th><th>交易筆數</th><th>最近活動</th><th>操作</th></tr></thead><tbody>{customers.map((customer) => { const selected = selectedCustomerId === customer.id; const activate = () => { if (!loading) selectCustomer(customer.id); }; return <tr key={customer.id} className={`member-row ${selected ? "member-row--selected" : ""}`} tabIndex={0} aria-selected={selected} aria-label={`查看 ${customer.phone_display} 的會員明細`} onClick={activate} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && !loading) { event.preventDefault(); selectCustomer(customer.id); } }}><td><button type="button" className="member-phone-button" onClick={(event) => { event.stopPropagation(); activate(); }} disabled={loading} aria-label={`查看 ${customer.phone_display} 的明細`}><strong>{customer.phone_display}</strong><small>加入於 {formatDate(customer.created_at)}</small></button></td><td className="member-points">{customer.points_balance.toLocaleString()}</td><td>{customer.transaction_count}</td><td>{formatDate(customer.last_transaction_at)}</td><td><button type="button" className="button button--secondary member-detail-button" aria-pressed={selected} onClick={(event) => { event.stopPropagation(); activate(); }} disabled={loading}>查看明細</button></td></tr>; })}</tbody></table></div>}
+          {loading && customers.length === 0 ? <LoadingState label="同步會員資料中…" /> : customers.length === 0 ? <EmptyState title="沒有符合條件的會員" description="請調整分店或電話搜尋條件。" /> : <div className="table-wrap"><table className="data-table member-table"><thead><tr><th scope="col">會員電話</th><th scope="col" aria-sort={sort.by === "points" ? (sort.direction === "desc" ? "descending" : "ascending") : "none"}>{renderSortHeader("points")}</th><th scope="col" aria-sort={sort.by === "transactions" ? (sort.direction === "desc" ? "descending" : "ascending") : "none"}>{renderSortHeader("transactions")}</th><th scope="col" aria-sort={sort.by === "activity" ? (sort.direction === "desc" ? "descending" : "ascending") : "none"}>{renderSortHeader("activity")}</th><th scope="col">操作</th></tr></thead><tbody>{customers.map((customer) => { const selected = selectedCustomerId === customer.id; const activate = () => { if (!loading) selectCustomer(customer.id); }; return <tr key={customer.id} className={`member-row ${selected ? "member-row--selected" : ""}`} tabIndex={0} aria-selected={selected} aria-label={`查看 ${customer.phone_display} 的會員明細`} onClick={activate} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && !loading) { event.preventDefault(); selectCustomer(customer.id); } }}><td><button type="button" className="member-phone-button" onClick={(event) => { event.stopPropagation(); activate(); }} disabled={loading} aria-label={`查看 ${customer.phone_display} 的明細`}><strong>{customer.phone_display}</strong><small>加入於 {formatDate(customer.created_at)}</small></button></td><td className="member-points">{customer.points_balance.toLocaleString()}</td><td>{customer.transaction_count}</td><td>{formatDate(customer.last_transaction_at)}</td><td><button type="button" className="button button--secondary member-detail-button" aria-pressed={selected} onClick={(event) => { event.stopPropagation(); activate(); }} disabled={loading}>查看明細</button></td></tr>; })}</tbody></table></div>}
           <div className="member-pagination"><button className="button button--secondary" type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={loading || page === 0}><ArrowLeft size={16} aria-hidden="true" />上一頁</button><span>第 {page + 1} 頁</span><button className="button button--secondary" type="button" onClick={() => setPage((current) => current + 1)} disabled={loading || !hasMore}>下一頁<ArrowRight size={16} aria-hidden="true" /></button></div>
         </section>
 

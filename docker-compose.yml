@@ -33,6 +33,7 @@ services:
   api:
     build:
       context: ./apps/api
+    command: npm run dev
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -46,6 +47,8 @@ services:
       S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     ports:
       - "127.0.0.1:3000:3000"
+    volumes:
+      - ./apps/api/src:/app/src
     depends_on:
       db:
         condition: service_healthy
@@ -60,6 +63,10 @@ services:
       VITE_API_BASE_URL: http://localhost:3000
     ports:
       - "127.0.0.1:5173:5173"
+    volumes:
+      - ./apps/web/src:/app/src
+      - ./apps/web/public:/app/public
+      - ./apps/web/vite.config.js:/app/vite.config.js
     depends_on:
       - api
     restart: unless-stopped

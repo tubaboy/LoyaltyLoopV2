@@ -99,6 +99,17 @@ export const api = {
       formData.set("file", file);
       return request("/api/v2/merchant/media", { method: "POST", body: formData });
     },
+    uploadSound: (branchId, kind, file) => {
+      const formData = new FormData();
+      formData.set("branchId", branchId);
+      formData.set("kind", kind);
+      formData.set("file", file);
+      return request("/api/v2/merchant/media/sounds", { method: "POST", body: formData });
+    },
+    resetSound: (branchId, kind) => request("/api/v2/merchant/media/sounds/reset", {
+      method: "POST",
+      body: json({ branchId, kind }),
+    }),
     loyaltyOptions: (branchId) => request(`/api/v2/merchant/loyalty-options?branchId=${encodeURIComponent(branchId)}`),
     createLoyaltyOption: (payload) => request("/api/v2/merchant/loyalty-options", { method: "POST", body: json(payload) }),
     updateLoyaltyOption: (optionId, payload) => request(`/api/v2/merchant/loyalty-options/${encodeURIComponent(optionId)}`, { method: "PATCH", body: json(payload) }),

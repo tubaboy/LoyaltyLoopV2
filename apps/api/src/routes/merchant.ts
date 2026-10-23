@@ -1,5 +1,5 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import type pg from "pg";
 import { requireAccount, type AccountRequest } from "../auth/session.js";
@@ -11,6 +11,10 @@ const imageExtensions: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
+};
+const soundSettingColumns: Record<string, string> = {
+  collection_sound: "collection_sound_asset_id",
+  redemption_sound: "redemption_sound_asset_id",
 };
 
 const allowedPointCollectionEffects = new Set(["shower", "flip"]);
@@ -33,6 +37,54 @@ const imageUpload = multer({
     callback(null, Boolean(imageExtensions[file.mimetype]));
   },
 });
+
+const soundUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 },
+  fileFilter: (_request, file, callback) => {
+    callback(null, ["audio/mpeg", "audio/mp3"].includes(file.mimetype) && file.originalname.toLowerCase().endsWith(".mp3"));
+  },
+});
+
+function parseSoundUpload(request: Request, response: Response, next: NextFunction): void {
+  soundUpload.single("file")(request, response, (error?: unknown) => {
+    if (error instanceof multer.MulterError) {
+      if (error.code === "LIMIT_FILE_SIZE") {
+        response.status(413).json({ error: "MP3 音效不可大於 1 MB，請縮短或壓縮後再上傳。" });
+        return;
+      }
+      response.status(400).json({ error: "音效檔案或上傳欄位格式不正確，請重新選擇 MP3 檔案。" });
+      return;
+    }
+    if (error) {
+      next(error);
+      return;
+    }
+    next();
+  });
+}
+
+function hasMp3Signature(buffer: Buffer): boolean {
+  if (buffer.length < 4) return false;
+  let start = 0;
+  if (buffer.toString("ascii", 0, 3) === "ID3") {
+    if (buffer.length < 10) return false;
+    const tagSize = (buffer[6] << 21) | (buffer[7] << 14) | (buffer[8] << 7) | buffer[9];
+    start = 10 + tagSize + ((buffer[5] & 0x10) ? 10 : 0);
+  }
+
+  const searchLimit = Math.min(buffer.length - 3, start + 4096);
+  for (let index = start; index <= searchLimit; index += 1) {
+    const secondByte = buffer[index + 1];
+    const thirdByte = buffer[index + 2];
+    if (
+      buffer[index] === 0xff && (secondByte & 0xe0) === 0xe0 &&
+      ((secondByte >> 3) & 0x03) !== 0x01 && ((secondByte >> 1) & 0x03) !== 0 &&
+      ((thirdByte >> 4) & 0x0f) !== 0x0f && ((thirdByte >> 2) & 0x03) !== 0x03
+    ) return true;
+  }
+  return false;
+}
 
 function resolveMerchantId(request: AccountRequest, requested?: string): string | undefined {
   if (!request.auth) return undefined;
@@ -71,6 +123,7 @@ async function cleanupUnreferencedMediaAsset(pool: pg.Pool, assetId: string): Pr
          select 1
          from branch_settings bs
          where bs.logo_asset_id = ma.id or bs.screensaver_asset_id = ma.id
+            or bs.collection_sound_asset_id = ma.id or bs.redemption_sound_asset_id = ma.id
        )`,
     [assetId],
   );
@@ -92,6 +145,7 @@ async function cleanupUnreferencedMediaAsset(pool: pg.Pool, assetId: string): Pr
          select 1
          from branch_settings bs
          where bs.logo_asset_id = ma.id or bs.screensaver_asset_id = ma.id
+            or bs.collection_sound_asset_id = ma.id or bs.redemption_sound_asset_id = ma.id
        )`,
     [asset.id],
   );
@@ -187,6 +241,136 @@ export function createMerchantRouter(pool: pg.Pool): Router {
       });
     } catch (error) {
       if (objectKey) await deleteObject(objectKey).catch(() => undefined);
+      next(error);
+    }
+  });
+
+  router.post("/media/sounds", parseSoundUpload, async (request, response, next) => {
+    let objectKey: string | undefined;
+    try {
+      const account = (request as AccountRequest).auth;
+      const branchId = requestBodyString(request, "branchId");
+      const kind = requestBodyString(request, "kind");
+      const settingColumn = kind ? soundSettingColumns[kind] : undefined;
+      const file = request.file;
+
+      if (!account || !branchId || !settingColumn || !file) {
+        response.status(400).json({ error: "請選擇分店、音效用途與 MP3 音檔" });
+        return;
+      }
+      if (!hasMp3Signature(file.buffer)) {
+        response.status(400).json({ error: "檔案內容不是有效的 MP3 音效" });
+        return;
+      }
+
+      const branchResult = await pool.query<{ merchant_id: string }>(
+        "select merchant_id from branches where id = $1",
+        [branchId],
+      );
+      const branch = branchResult.rows[0];
+      if (!branch) {
+        response.status(404).json({ error: "找不到分店" });
+        return;
+      }
+      if (account.role !== "admin" && !account.merchantIds.includes(branch.merchant_id)) {
+        response.status(403).json({ error: "沒有此分店的音效管理權限" });
+        return;
+      }
+
+      objectKey = `${branch.merchant_id}/${branchId}/${kind}/${randomUUID()}.mp3`;
+      await putObject(objectKey, file.buffer, "audio/mpeg");
+
+      const asset = await withTransaction(async (client) => {
+        await client.query(
+          "insert into branch_settings (branch_id) values ($1) on conflict (branch_id) do nothing",
+          [branchId],
+        );
+        const previousAsset = await client.query<{ assetId: string | null }>(
+          `select ${settingColumn} as "assetId"
+           from branch_settings
+           where branch_id = $1
+           for update`,
+          [branchId],
+        );
+        const inserted = await client.query<{
+          id: string;
+          kind: string;
+          mime_type: string;
+          byte_size: number;
+          original_name: string | null;
+        }>(
+          `insert into media_assets (merchant_id, branch_id, kind, object_key, original_name, mime_type, byte_size)
+           values ($1, $2, $3, $4, $5, 'audio/mpeg', $6)
+           returning id, kind, mime_type, byte_size, original_name`,
+          [branch.merchant_id, branchId, kind, objectKey, file.originalname.slice(0, 255), file.size],
+        );
+        await client.query(`update branch_settings set ${settingColumn} = $1 where branch_id = $2`, [inserted.rows[0].id, branchId]);
+        return { ...inserted.rows[0], previousAssetId: previousAsset.rows[0]?.assetId ?? null };
+      });
+
+      if (asset.previousAssetId) {
+        try {
+          await cleanupUnreferencedMediaAsset(pool, asset.previousAssetId);
+        } catch (cleanupError) {
+          console.warn("MEDIA_ASSET_DATABASE_CLEANUP_FAILED", { assetId: asset.previousAssetId, cleanupError });
+        }
+      }
+
+      response.status(201).json({
+        asset: {
+          id: asset.id,
+          kind: asset.kind,
+          name: asset.original_name,
+          mimeType: asset.mime_type,
+          byteSize: asset.byte_size,
+          url: `/api/v2/media/${asset.id}`,
+        },
+      });
+    } catch (error) {
+      if (objectKey) await deleteObject(objectKey).catch(() => undefined);
+      next(error);
+    }
+  });
+
+  router.post("/media/sounds/reset", async (request, response, next) => {
+    try {
+      const account = (request as AccountRequest).auth;
+      const branchId = requestBodyString(request, "branchId");
+      const kind = requestBodyString(request, "kind");
+      const settingColumn = kind ? soundSettingColumns[kind] : undefined;
+      if (!account || !branchId || !settingColumn) {
+        response.status(400).json({ error: "請選擇分店與音效用途" });
+        return;
+      }
+
+      const access = await resolveBranchAccess(pool, account, branchId);
+      if ("status" in access) {
+        response.status(access.status).json({ error: access.error });
+        return;
+      }
+
+      const previousAssetId = await withTransaction(async (client) => {
+        await client.query(
+          "insert into branch_settings (branch_id) values ($1) on conflict (branch_id) do nothing",
+          [branchId],
+        );
+        const previous = await client.query<{ assetId: string | null }>(
+          `select ${settingColumn} as "assetId" from branch_settings where branch_id = $1 for update`,
+          [branchId],
+        );
+        await client.query(`update branch_settings set ${settingColumn} = null where branch_id = $1`, [branchId]);
+        return previous.rows[0]?.assetId ?? null;
+      });
+
+      if (previousAssetId) {
+        try {
+          await cleanupUnreferencedMediaAsset(pool, previousAssetId);
+        } catch (cleanupError) {
+          console.warn("MEDIA_ASSET_DATABASE_CLEANUP_FAILED", { assetId: previousAssetId, cleanupError });
+        }
+      }
+      response.json({ reset: true, kind });
+    } catch (error) {
       next(error);
     }
   });
@@ -671,11 +855,17 @@ export function createMerchantRouter(pool: pg.Pool): Router {
            bs.screensaver_timeout,
            bs.logo_asset_id,
            bs.screensaver_asset_id,
+           bs.collection_sound_asset_id,
+           collection_sound.original_name as collection_sound_name,
+           bs.redemption_sound_asset_id,
+           redemption_sound.original_name as redemption_sound_name,
            tc.key_hint as terminal_key_hint,
            tc.created_at as terminal_key_created_at,
            coalesce(tc.is_active, false) as terminal_key_active
          from branches b
          left join branch_settings bs on bs.branch_id = b.id
+         left join media_assets collection_sound on collection_sound.id = bs.collection_sound_asset_id
+         left join media_assets redemption_sound on redemption_sound.id = bs.redemption_sound_asset_id
          left join lateral (
            select key_hint, created_at, is_active
            from terminal_credentials
@@ -780,9 +970,13 @@ export function createMerchantRouter(pool: pg.Pool): Router {
         `select b.id, b.name, b.address, b.phone, b.is_active, b.timezone,
                 bs.daily_redemption_limit, bs.theme_color, bs.reset_interval, bs.reminder_interval,
                 bs.enable_confetti, bs.enable_sound, bs.point_collection_effect, bs.redemption_effect,
-                bs.screensaver_timeout, bs.logo_asset_id, bs.screensaver_asset_id
+                bs.screensaver_timeout, bs.logo_asset_id, bs.screensaver_asset_id,
+                bs.collection_sound_asset_id, collection_sound.original_name as collection_sound_name,
+                bs.redemption_sound_asset_id, redemption_sound.original_name as redemption_sound_name
          from branches b
          left join branch_settings bs on bs.branch_id = b.id
+         left join media_assets collection_sound on collection_sound.id = bs.collection_sound_asset_id
+         left join media_assets redemption_sound on redemption_sound.id = bs.redemption_sound_asset_id
          where b.id = $1`,
         [branchId],
       );
@@ -1052,6 +1246,23 @@ export function createMerchantRouter(pool: pg.Pool): Router {
       }
 
       const search = queryString(request, "search") ?? queryString(request, "phone");
+      const sortBy = queryString(request, "sortBy") ?? "activity";
+      const sortDirection = (queryString(request, "sortDirection") ?? "desc").toLowerCase();
+      const sortExpressions: Record<string, string> = {
+        points: "c.points_balance",
+        transactions: "count(pt.id)",
+        activity: "max(pt.created_at)",
+      };
+      if (!Object.prototype.hasOwnProperty.call(sortExpressions, sortBy)) {
+        response.status(400).json({ error: "會員排序欄位不正確" });
+        return;
+      }
+      if (sortDirection !== "asc" && sortDirection !== "desc") {
+        response.status(400).json({ error: "會員排序方向不正確" });
+        return;
+      }
+      const sortExpression = sortExpressions[sortBy];
+      const orderDirection = sortDirection === "asc" ? "ASC" : "DESC";
       const rawOffset = queryString(request, "offset");
       const offset = rawOffset === undefined ? 0 : Number(rawOffset);
       if (!Number.isInteger(offset) || offset < 0) {
@@ -1099,7 +1310,7 @@ export function createMerchantRouter(pool: pg.Pool): Router {
            on pt.customer_id = c.id and pt.merchant_id = c.merchant_id
          where ${conditions.join(" and ")}
          group by c.id
-         order by c.updated_at desc, c.created_at desc, c.id asc
+         order by ${sortExpression} ${orderDirection} nulls last, max(pt.created_at) desc nulls last, c.created_at desc, c.id asc
          limit ${limitParameter} offset ${offsetParameter}`,
         values,
       );

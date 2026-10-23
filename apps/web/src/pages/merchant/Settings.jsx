@@ -8,6 +8,11 @@ const imageKindLabels = {
   screensaver: "待機畫面",
 };
 
+const soundOptions = [
+  { key: "collection", kind: "collection_sound", assetField: "collection_sound_asset_id", nameField: "collection_sound_name", label: "集點音效", fallback: "coin.mp3" },
+  { key: "redemption", kind: "redemption_sound", assetField: "redemption_sound_asset_id", nameField: "redemption_sound_name", label: "兌換音效", fallback: "celebration.mp3" },
+];
+
 const defaultSettingsForm = {
   name: "",
   address: "",
@@ -92,15 +97,27 @@ export default function Settings() {
   const [previewUrls, setPreviewUrls] = useState({ logo: "", screensaver: "" });
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [soundFiles, setSoundFiles] = useState({ collection: null, redemption: null });
+  const [soundDraftUrls, setSoundDraftUrls] = useState({ collection: "", redemption: "" });
+  const [soundPreviewUrls, setSoundPreviewUrls] = useState({ collection: "", redemption: "" });
+  const [soundPreviewLoading, setSoundPreviewLoading] = useState(false);
+  const [soundPreviewError, setSoundPreviewError] = useState("");
+  const [soundBusy, setSoundBusy] = useState("");
+  const [soundError, setSoundError] = useState("");
+  const [soundNotice, setSoundNotice] = useState("");
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const fileInputRef = useRef(null);
+  const soundFileInputRefs = useRef({});
   const previewUrlsRef = useRef({ logo: "", screensaver: "" });
 
   const activeBranch = branches.find((branch) => branch.id === selectedBranch);
   const logoAssetId = activeBranch?.logo_asset_id ?? "";
   const screensaverAssetId = activeBranch?.screensaver_asset_id ?? "";
+  const collectionSoundAssetId = activeBranch?.collection_sound_asset_id ?? "";
+  const redemptionSoundAssetId = activeBranch?.redemption_sound_asset_id ?? "";
+  const soundBranchBusy = Boolean(soundBusy);
 
   function revokePreviewUrls() {
     Object.values(previewUrlsRef.current).forEach((url) => { if (url) URL.revokeObjectURL(url); });
@@ -153,6 +170,26 @@ export default function Settings() {
   }, [selectedBranch]);
 
   useEffect(() => {
+    setSoundFiles({ collection: null, redemption: null });
+    setSoundError("");
+    setSoundNotice("");
+    Object.values(soundFileInputRefs.current).forEach((input) => {
+      if (input) input.value = "";
+    });
+  }, [selectedBranch]);
+
+  useEffect(() => {
+    const nextUrls = { collection: "", redemption: "" };
+    soundOptions.forEach(({ key }) => {
+      if (soundFiles[key]) nextUrls[key] = URL.createObjectURL(soundFiles[key]);
+    });
+    setSoundDraftUrls(nextUrls);
+    return () => {
+      Object.values(nextUrls).forEach((url) => { if (url) URL.revokeObjectURL(url); });
+    };
+  }, [soundFiles]);
+
+  useEffect(() => {
     let mounted = true;
     revokePreviewUrls();
     setPreviewUrls({ logo: "", screensaver: "" });
@@ -194,6 +231,50 @@ export default function Settings() {
     };
   }, [logoAssetId, screensaverAssetId]);
 
+  useEffect(() => {
+    let mounted = true;
+    const objectUrls = [];
+    setSoundPreviewUrls({ collection: "", redemption: "" });
+    setSoundPreviewError("");
+
+    const assets = soundOptions
+      .map(({ key, assetField }) => ({ key, assetId: activeBranch?.[assetField] }))
+      .filter(({ assetId }) => assetId);
+    if (assets.length === 0) {
+      setSoundPreviewLoading(false);
+      return () => { mounted = false; };
+    }
+
+    setSoundPreviewLoading(true);
+    (async () => {
+      const results = await Promise.allSettled(assets.map(async ({ key, assetId }) => ({
+        key,
+        url: URL.createObjectURL(await api.media.download(assetId)),
+      })));
+      const nextUrls = { collection: "", redemption: "" };
+      let failed = false;
+      results.forEach((result) => {
+        if (result.status === "fulfilled") {
+          nextUrls[result.value.key] = result.value.url;
+          objectUrls.push(result.value.url);
+        } else failed = true;
+      });
+
+      if (!mounted) {
+        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        return;
+      }
+      setSoundPreviewUrls(nextUrls);
+      setSoundPreviewError(failed ? "自訂音效預覽載入失敗；終端仍會使用內建預設音效。" : "");
+      setSoundPreviewLoading(false);
+    })();
+
+    return () => {
+      mounted = false;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [collectionSoundAssetId, redemptionSoundAssetId]);
+
   function updateSettingsField(field, value) {
     setSettingsForm((current) => ({ ...current, [field]: value }));
   }
@@ -221,6 +302,70 @@ export default function Settings() {
       setError(uploadError.message ?? "圖片上傳失敗");
     } finally {
       setUploading(false);
+    }
+  }
+
+  function handleSoundFileChange(kind, selectedFile) {
+    setSoundError("");
+    setSoundNotice("");
+    setSoundFiles((current) => ({ ...current, [kind]: selectedFile }));
+  }
+
+  async function handleSoundUpload(kind) {
+    const option = soundOptions.find((item) => item.key === kind);
+    const selectedFile = soundFiles[kind];
+    setSoundError("");
+    setSoundNotice("");
+    if (!selectedBranch || !selectedFile || !option) {
+      setSoundError("請先選擇 MP3 音檔。");
+      return;
+    }
+    if (selectedFile.size > 1024 * 1024) {
+      setSoundError("MP3 音檔不可大於 1 MB，請縮短或壓縮後再上傳。");
+      return;
+    }
+
+    setSoundBusy(kind);
+    try {
+      const payload = await api.merchant.uploadSound(selectedBranch, option.kind, selectedFile);
+      setBranches((current) => current.map((branch) => (
+        branch.id === selectedBranch
+          ? { ...branch, [option.assetField]: payload.asset.id, [option.nameField]: payload.asset.name ?? selectedFile.name }
+          : branch
+      )));
+      setSoundFiles((current) => ({ ...current, [kind]: null }));
+      if (soundFileInputRefs.current[kind]) soundFileInputRefs.current[kind].value = "";
+      setSoundNotice(`${option.label}已上傳並套用至目前分店；終端下次載入設定後會使用新音效。`);
+    } catch (uploadError) {
+      const status = uploadError.status ? `（HTTP ${uploadError.status}）` : "";
+      setSoundError(`${uploadError.message ?? `${option.label}上傳失敗`}${status}`);
+    } finally {
+      setSoundBusy("");
+    }
+  }
+
+  async function handleSoundReset(kind) {
+    const option = soundOptions.find((item) => item.key === kind);
+    if (!option || !selectedBranch || !activeBranch?.[option.assetField]) return;
+    if (!window.confirm(`將「${option.label}」恢復為系統內建預設音效？`)) return;
+
+    setSoundError("");
+    setSoundNotice("");
+    setSoundBusy(kind);
+    try {
+      await api.merchant.resetSound(selectedBranch, option.kind);
+      setBranches((current) => current.map((branch) => (
+        branch.id === selectedBranch
+          ? { ...branch, [option.assetField]: null, [option.nameField]: null }
+          : branch
+      )));
+      setSoundFiles((current) => ({ ...current, [kind]: null }));
+      if (soundFileInputRefs.current[kind]) soundFileInputRefs.current[kind].value = "";
+      setSoundNotice(`${option.label}已恢復為系統內建預設音效；已開啟的終端需重新載入設定才會更新。`);
+    } catch (resetError) {
+      setSoundError(resetError.message ?? `${option.label}恢復預設失敗`);
+    } finally {
+      setSoundBusy("");
     }
   }
 
@@ -398,7 +543,7 @@ export default function Settings() {
             <SettingsSectionHeading icon={Palette} eyebrow="TERMINAL CUSTOMIZATION" title="終端機自訂" description="調整分店終端的圖片、主題與操作回饋。" tone="teal" />
 
             <label className="field-label settings-branch-picker" htmlFor="settings-branch">選擇分店
-              <select id="settings-branch" value={selectedBranch} onChange={(event) => setSelectedBranch(event.target.value)} disabled={settingsBusy || uploading}>
+              <select id="settings-branch" value={selectedBranch} onChange={(event) => setSelectedBranch(event.target.value)} disabled={settingsBusy || uploading || soundBranchBusy}>
                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
             </label>
@@ -526,6 +671,52 @@ export default function Settings() {
                     <input type="checkbox" checked={settingsForm.enableSound} onChange={(event) => updateSettingsField("enableSound", event.target.checked)} disabled={settingsBusy} />
                     <span className="settings-toggle__track" aria-hidden="true" />
                   </label>
+                  <div className="sound-settings-grid">
+                    {soundOptions.map((option) => {
+                      const assetId = activeBranch?.[option.assetField] ?? "";
+                      const currentName = activeBranch?.[option.nameField];
+                      const draftUrl = soundDraftUrls[option.key];
+                      const previewUrl = soundPreviewUrls[option.key];
+                      const selectedFile = soundFiles[option.key];
+                      const isBusy = soundBusy === option.key;
+                      const previewSource = draftUrl || previewUrl || `${import.meta.env.BASE_URL}${option.fallback}`;
+                      const previewUnavailable = Boolean(assetId && !draftUrl && !previewUrl);
+                      return (
+                        <section className="sound-settings-card" key={option.key} aria-label={option.label}>
+                          <div className="sound-settings-card__header">
+                            <div><strong>{option.label}</strong><small>{currentName || (assetId ? "已上傳自訂音效" : "使用系統內建音效")}</small></div>
+                            <span className={`status-pill ${assetId ? "status-pill--active" : "status-pill--muted"}`}>{assetId ? "自訂" : "預設"}</span>
+                          </div>
+                          {previewUnavailable
+                            ? <p className="sound-settings-card__loading">{soundPreviewLoading ? "自訂音效載入中…" : soundPreviewError ? "預覽載入失敗，終端會使用內建預設音效。" : "正在準備自訂音效…"}</p>
+                            : <audio className="sound-settings-card__player" controls preload="none" src={previewSource} aria-label={`試聽${option.label}`} />}
+                          <label className="field-label" htmlFor={`sound-file-${option.key}`}>選擇 MP3（最大 1 MB）
+                            <input
+                              ref={(element) => { soundFileInputRefs.current[option.key] = element; }}
+                              id={`sound-file-${option.key}`}
+                              type="file"
+                              accept=".mp3,audio/mpeg"
+                              onChange={(event) => handleSoundFileChange(option.key, event.target.files?.[0] ?? null)}
+                              disabled={soundBranchBusy || !selectedBranch}
+                            />
+                          </label>
+                          {selectedFile && <span className="sound-settings-card__filename" title={selectedFile.name}>{selectedFile.name}</span>}
+                          <div className="sound-settings-card__actions">
+                            <button className="button button--secondary" type="button" onClick={() => handleSoundUpload(option.key)} disabled={soundBranchBusy || !selectedBranch || !selectedFile}>
+                              <UploadCloud size={16} aria-hidden="true" />{isBusy ? "上傳中…" : "上傳並套用"}
+                            </button>
+                            {assetId && <button className="button button--danger" type="button" onClick={() => handleSoundReset(option.key)} disabled={soundBranchBusy}>
+                              <Volume2 size={16} aria-hidden="true" />恢復預設
+                            </button>}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                  <p className="settings-help sound-settings-help">自訂音效只套用到目前分店；未設定時會使用原有的 coin.mp3 與 celebration.mp3。上傳成功後，已開啟的終端需重新載入設定才會更新。</p>
+                  {soundPreviewError && <div className="inline-error" role="alert">{soundPreviewError}</div>}
+                  {soundError && <div className="inline-error" role="alert">{soundError}</div>}
+                  {soundNotice && <div className="inline-success" role="status">{soundNotice}</div>}
                 </div>
               </div>
 

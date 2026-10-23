@@ -47,6 +47,8 @@ function terminalContextResponse(context: Awaited<ReturnType<typeof getTerminalC
     screensaver_timeout: context.screensaverTimeout,
     logo_asset_id: context.logoAssetId,
     screensaver_asset_id: context.screensaverAssetId,
+    collection_sound_asset_id: context.collectionSoundAssetId,
+    redemption_sound_asset_id: context.redemptionSoundAssetId,
   };
 }
 
