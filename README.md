@@ -134,6 +134,8 @@ V2 的 Web App Manifest 會讓安裝到平板的 LoyaltyLoop 以獨立視窗啟�
 
 Service Worker 僅在 production build 中產生。可在 `apps/web` 執行 `npm run build`，再執行 `npm run preview`，於本機 `http://localhost:4173` 驗證 production build。平板實機安裝需使用 HTTPS 網址；連到電腦的區網 HTTP 位址不適合作為 Service Worker 的安裝驗收環境。
 
+Railway 使用的 Web production image 由 `apps/web/Dockerfile.railway` 建置，提供靜態 PWA、SPA 路由與同源 `/api/` 代理。可用本機 Docker 預覽此 image：`docker compose --profile tablet-preview up -d --build web-production-preview`，網址為 `http://localhost:4174/terminal-login`；預覽服務停止後，本機開發服務仍使用 `http://localhost:5173`。
+
 在 Android Chrome 開啟 HTTPS 測試網址後，從瀏覽器選單選擇「安裝應用程式」或「加到主畫面」（名稱會依瀏覽器版本略有不同）。安裝後從桌面圖示啟動，應直接進入終端登入頁，且不顯示 Chrome 網址列。Android 系統狀態列仍可能顯示，若需鎖定平板操作，需另外設定裝置的螢幕固定或 kiosk 模式。
 
 實機驗收：首次安裝前保持連線；確認終端登入、會員查詢、集點、兌換與音效正常；關閉網路後確認離線提示出現，登入與點數操作不可用；重新連線後確認可正常操作。發布新版本後，確認更新提示出現，並在完成目前操作後手動更新，避免交易進行中自動重載。

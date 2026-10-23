@@ -71,6 +71,20 @@ services:
       - api
     restart: unless-stopped
 
+  web-production-preview:
+    profiles: ["tablet-preview"]
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.railway
+    environment:
+      PORT: 8080
+      API_UPSTREAM: http://api:3000
+    ports:
+      - "127.0.0.1:4174:8080"
+    depends_on:
+      - api
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   minio_data:
