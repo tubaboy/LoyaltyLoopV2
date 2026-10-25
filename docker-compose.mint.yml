@@ -1,0 +1,67 @@
+name: loyaltyloop-v2-mint
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: loyaltyloop-v2-mint-db
+    environment:
+      POSTGRES_DB: loyaltyloop_v2
+      POSTGRES_USER: loyaltyloop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.mint}
+    ports:
+      - "${MINT_REPLICATION_BIND_ADDRESS:?Set MINT_REPLICATION_BIND_ADDRESS in .env.mint}:15432:5432"
+    volumes:
+      - mint_postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loyaltyloop -d loyaltyloop_v2"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: loyaltyloop-v2-mint-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://loyaltyloop:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.mint}@db:5432/loyaltyloop_v2
+      COOKIE_SECURE: "false"
+      CORS_ORIGIN: ${MINT_ORIGIN:?Set MINT_ORIGIN in .env.mint}
+      LOCAL_STORAGE_PATH: /var/lib/loyaltyloop/media
+      MEDIA_SYNC_URL: ${MEDIA_SYNC_URL:-}
+      MEDIA_SYNC_TOKEN: ${MEDIA_SYNC_TOKEN:-}
+    volumes:
+      - mint_media_data:/var/lib/loyaltyloop/media
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.railway
+    container_name: loyaltyloop-v2-mint-web
+    environment:
+      API_UPSTREAM: http://api:3000
+    ports:
+      - "${MINT_BIND_ADDRESS:?Set MINT_BIND_ADDRESS in .env.mint}:8080:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mint_postgres_data:
+    name: loyaltyloop_v2_mint_postgres
+  mint_media_data:
+    name: loyaltyloop_v2_mint_media

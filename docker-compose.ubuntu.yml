@@ -8,9 +8,9 @@ services:
       POSTGRES_DB: loyaltyloop_v2
       POSTGRES_USER: loyaltyloop
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      PGPASSFILE: /var/lib/postgresql/data/.pgpass
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/init/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - postgres_standby_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U loyaltyloop -d loyaltyloop_v2"]
       interval: 5s
@@ -18,7 +18,26 @@ services:
       retries: 20
     restart: unless-stopped
 
+  media-sync:
+    build:
+      context: ./apps/media-sync
+      dockerfile: Dockerfile
+    container_name: loyaltyloop-v2-media-sync
+    network_mode: host
+    environment:
+      MEDIA_SYNC_BIND_ADDRESS: ${MEDIA_SYNC_BIND_ADDRESS:?Set MEDIA_SYNC_BIND_ADDRESS in .env.ubuntu}
+      MEDIA_SYNC_PORT: 18765
+      MEDIA_SYNC_TOKEN: ${MEDIA_SYNC_TOKEN:?Set MEDIA_SYNC_TOKEN in .env.ubuntu}
+      MEDIA_SYNC_PATH: /var/lib/loyaltyloop/media
+      MEDIA_SYNC_STATE_PATH: /var/lib/loyaltyloop/media-sync-state
+      MEDIA_SYNC_DELETE_GRACE_MS: 604800000
+    volumes:
+      - media_data:/var/lib/loyaltyloop/media
+      - media_sync_state:/var/lib/loyaltyloop/media-sync-state
+    restart: unless-stopped
+
   api:
+    profiles: ["primary"]
     build:
       context: ./apps/api
       dockerfile: Dockerfile
@@ -43,6 +62,7 @@ services:
     restart: unless-stopped
 
   web:
+    profiles: ["primary"]
     build:
       context: ./apps/web
       dockerfile: Dockerfile.ubuntu
@@ -72,8 +92,13 @@ services:
 volumes:
   postgres_data:
     name: loyaltyloop_v2_ubuntu_postgres
+  postgres_standby_data:
+    external: true
+    name: loyaltyloop_v2_ubuntu_postgres_standby
   media_data:
     name: loyaltyloop_v2_ubuntu_media
+  media_sync_state:
+    name: loyaltyloop_v2_ubuntu_media_sync_state
   letsencrypt:
     name: loyaltyloop_v2_ubuntu_letsencrypt
   acme_webroot:

@@ -4,6 +4,8 @@ coverage/
 .env
 .env.*
 !.env.example
+# Keep machine-specific samples local until all non-placeholder values are reviewed.
+.env.mint.example
 uploads/
 .DS_Store
 Thumbs.db
@@ -20,6 +22,19 @@ desktop.ini
 *.bak
 backup_*.sql
 backups/
+*.tar.gz.age
+*.age
+age-identity.txt
+rclone.conf
+.env.backup
+
+# Historical backup experiments and a local mirror of the separate backup repo.
+# Keep these available locally, but do not include them in the V2 app repository.
+/ops/backup/archive/
+
+# Emergency launchers currently contain host-specific connection targets.
+# Keep them local until those targets are moved to a reviewed local config.
+/ops/failover/
 
 # Local logs
 *.log

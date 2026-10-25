@@ -20,6 +20,7 @@ type LegacyMerchant = {
   contact_address: string | null;
   tax_id: string | null;
   email: string | null;
+  recovery_password: string | null;
   status: string | null;
   store_code: string | null;
 };
@@ -87,8 +88,10 @@ type MigrationReport = {
   skippedLineBindings: number;
   skippedBindCodes: number;
   imageUrlsForReupload: number;
-  accountsImportedInactive: number;
-  accountsWithoutEmail: number;
+  legacyAdminProfilesSkipped: number;
+  merchantAccountsImportedActive: number;
+  merchantAccountsImportedInactive: number;
+  merchantAccountsWithoutEmail: number;
   customersWithoutTransactions: number;
   customersWithPositiveBalanceWithoutTransactions: number;
   warnings: string[];
@@ -134,10 +137,6 @@ function hashTerminalKey(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function fallbackEmail(profileId: string): string {
-  return `legacy-${profileId}@invalid.local`;
-}
-
 function normalizeStoreCode(value: string | null, merchantId: string): string {
   const code = trimOrNull(value)?.slice(0, 4);
   return code || `L${merchantId.replace(/-/g, "").slice(0, 3).toUpperCase()}`;
@@ -146,7 +145,7 @@ function normalizeStoreCode(value: string | null, merchantId: string): string {
 async function loadLegacyData() {
   const [profiles, merchants, branches, customers, loyaltyOptions, transactions, bindCodes, lineBindings] = await Promise.all([
     source.query<LegacyProfile>("select id, role, created_at from public.profiles order by created_at nulls last, id"),
-    source.query<LegacyMerchant>("select id, store_name, settings, created_at, contact_person, contact_phone, contact_address, tax_id, email, status, store_code from public.merchants order by created_at nulls last, id"),
+    source.query<LegacyMerchant>("select id, store_name, settings, created_at, contact_person, contact_phone, contact_address, tax_id, email, recovery_password, status, store_code from public.merchants order by created_at nulls last, id"),
     source.query<LegacyBranch>("select id, merchant_id, name, address, phone, is_active, created_at, login_key, daily_redemption_limit, theme_color, reset_interval, enable_confetti, logo_url, enable_sound, point_collection_effect, redemption_effect, reminder_interval, screensaver_timeout, screensaver_url from public.branches order by created_at nulls last, id"),
     source.query<LegacyCustomer>("select id, merchant_id, phone, points, created_at from public.customers order by created_at nulls last, id"),
     source.query<LegacyOption>("select id, merchant_id, branch_id, type, label, value, is_active, display_order, created_at from public.loyalty_options order by created_at nulls last, id"),
@@ -176,17 +175,39 @@ function validateData(data: Awaited<ReturnType<typeof loadLegacyData>>): Migrati
   const transactionCustomerIds = new Set(data.transactions.map((transaction) => transaction.customer_id));
 
   const emailSet = new Set<string>();
-  let accountsWithoutEmail = 0;
+  let legacyAdminProfilesSkipped = 0;
+  let merchantAccountsImportedActive = 0;
+  let merchantAccountsImportedInactive = 0;
+  let merchantAccountsWithoutEmail = 0;
   for (const profile of data.profiles) {
+    if (profile.role === "admin") {
+      // The public-only backup excludes Supabase Auth credentials.
+      // Keep the existing V2 administrator account untouched.
+      legacyAdminProfilesSkipped += 1;
+      continue;
+    }
+    if (profile.role !== "merchant") continue;
+
     const merchant = data.merchants.find((item) => item.id === profile.id);
-    const email = trimOrNull(merchant?.email ?? null)?.toLowerCase() ?? fallbackEmail(profile.id);
-    if (!merchant?.email) accountsWithoutEmail += 1;
-    if (emailSet.has(email)) warnings.push(`Duplicate account email resolved with fallback: ${email}`);
-    emailSet.add(email);
+    const email = trimOrNull(merchant?.email ?? null)?.toLowerCase();
+    if (!email) {
+      merchantAccountsWithoutEmail += 1;
+      continue;
+    }
+    let uniqueEmail = email;
+    let suffix = 1;
+    while (emailSet.has(uniqueEmail)) {
+      uniqueEmail = email.replace("@", `+${suffix}@`);
+      suffix += 1;
+    }
+    if (uniqueEmail !== email) warnings.push("Duplicate merchant account emails were disambiguated during import.");
+    emailSet.add(uniqueEmail);
+    if (trimOrNull(merchant?.recovery_password ?? null)) merchantAccountsImportedActive += 1;
+    else merchantAccountsImportedInactive += 1;
   }
 
   for (const merchant of data.merchants) {
-    if (!profileIds.has(merchant.id)) warnings.push(`Merchant ${merchant.id} has no matching profile; account membership will be skipped.`);
+    if (!profileIds.has(merchant.id)) warnings.push("A merchant record has no matching profile; its account membership will be skipped.");
     if (!trimOrNull(merchant.store_code)) warnings.push(`Merchant ${merchant.id} has no store_code; a generated code will be used.`);
   }
   for (const branch of data.branches) {
@@ -234,8 +255,10 @@ function validateData(data: Awaited<ReturnType<typeof loadLegacyData>>): Migrati
     skippedLineBindings: data.lineBindingCount,
     skippedBindCodes: data.bindCodeCount,
     imageUrlsForReupload: data.branches.filter((branch) => Boolean(branch.logo_url || branch.screensaver_url)).length,
-    accountsImportedInactive: data.profiles.length,
-    accountsWithoutEmail,
+    legacyAdminProfilesSkipped,
+    merchantAccountsImportedActive,
+    merchantAccountsImportedInactive,
+    merchantAccountsWithoutEmail,
     customersWithoutTransactions: customersWithoutTransactions.length,
     customersWithPositiveBalanceWithoutTransactions: customersWithoutTransactions.filter((customer) => customer.points > 0).length,
     warnings,
@@ -248,10 +271,13 @@ async function importData(data: Awaited<ReturnType<typeof loadLegacyData>>): Pro
     await client.query("begin");
 
     const profileById = new Map(data.profiles.map((profile) => [profile.id, profile]));
+    const merchantById = new Map(data.merchants.map((merchant) => [merchant.id, merchant]));
     const usedEmails = new Set<string>();
     for (const profile of data.profiles) {
-      const merchant = data.merchants.find((item) => item.id === profile.id);
-      const baseEmail = trimOrNull(merchant?.email ?? null)?.toLowerCase() ?? fallbackEmail(profile.id);
+      if (profile.role !== "merchant") continue;
+      const merchant = merchantById.get(profile.id);
+      const baseEmail = trimOrNull(merchant?.email ?? null)?.toLowerCase();
+      if (!merchant || !baseEmail) continue;
       let email = baseEmail;
       let suffix = 1;
       while (usedEmails.has(email)) {
@@ -259,12 +285,17 @@ async function importData(data: Awaited<ReturnType<typeof loadLegacyData>>): Pro
         suffix += 1;
       }
       usedEmails.add(email);
-      const passwordHash = await hashPassword(randomBytes(32).toString("base64url"));
+      const legacyPassword = trimOrNull(merchant.recovery_password);
+      const passwordHash = await hashPassword(legacyPassword ?? randomBytes(32).toString("base64url"));
       await client.query(
         `insert into accounts (id, email, password_hash, role, status, created_at)
-         values ($1, $2, $3, $4, 'inactive', coalesce($5, now()))
-         on conflict (id) do update set email = excluded.email, role = excluded.role`,
-        [profile.id, email, passwordHash, profile.role === "admin" ? "admin" : "merchant", profile.created_at],
+         values ($1, $2, $3, 'merchant', $4, coalesce($5, now()))
+         on conflict (id) do update
+         set email = excluded.email,
+             role = excluded.role,
+             password_hash = case when $6 then excluded.password_hash else accounts.password_hash end,
+             status = case when $6 then excluded.status else accounts.status end`,
+        [profile.id, email, passwordHash, legacyPassword ? "active" : "inactive", profile.created_at, Boolean(legacyPassword)],
       );
     }
 
@@ -276,7 +307,7 @@ async function importData(data: Awaited<ReturnType<typeof loadLegacyData>>): Pro
         [merchant.id, merchant.store_name, normalizeStoreCode(merchant.store_code, merchant.id), merchant.contact_person, merchant.contact_phone, merchant.contact_address, merchant.tax_id, mapStatus(merchant.status), merchant.settings ?? {}, merchant.created_at, merchant.id],
       );
 
-      if (profileById.has(merchant.id)) {
+      if (profileById.get(merchant.id)?.role === "merchant") {
         await client.query(
           `insert into merchant_members (account_id, merchant_id, membership_role)
            values ($1, $2, 'owner')

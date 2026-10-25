@@ -5,6 +5,7 @@ import type pg from "pg";
 import { requireAccount, type AccountRequest } from "../auth/session.js";
 import { withTransaction } from "../db.js";
 import { clampLimit, normalizePhone, queryString, requestBodyBoolean, requestBodyInteger, requestBodyString } from "../http.js";
+import { requestMediaSync } from "../media-sync.js";
 import { deleteObject, putObject } from "../storage.js";
 
 const imageExtensions: Record<string, string> = {
@@ -149,6 +150,7 @@ async function cleanupUnreferencedMediaAsset(pool: pg.Pool, assetId: string): Pr
        )`,
     [asset.id],
   );
+  requestMediaSync(pool);
 }
 
 export function createMerchantRouter(pool: pg.Pool): Router {
@@ -220,6 +222,8 @@ export function createMerchantRouter(pool: pg.Pool): Router {
           previousAssetId: previousAsset.rows[0]?.assetId ?? null,
         };
       });
+
+      requestMediaSync(pool);
 
       if (asset.previousAssetId) {
         try {
@@ -307,6 +311,8 @@ export function createMerchantRouter(pool: pg.Pool): Router {
         await client.query(`update branch_settings set ${settingColumn} = $1 where branch_id = $2`, [inserted.rows[0].id, branchId]);
         return { ...inserted.rows[0], previousAssetId: previousAsset.rows[0]?.assetId ?? null };
       });
+
+      requestMediaSync(pool);
 
       if (asset.previousAssetId) {
         try {
