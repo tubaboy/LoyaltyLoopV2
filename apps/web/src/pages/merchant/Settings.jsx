@@ -37,9 +37,9 @@ const reminderIntervalOptions = [0, 5, 10, 15, 30];
 const screensaverTimeoutOptions = [0, 10, 30, 60, 120, 300];
 
 const effectLabels = {
-  shower: "金幣海",
+  shower: "Logo 光圈慶祝",
   confetti: "豪華灑花",
-  flip: "單幣翻轉",
+  flip: "Logo 金幣翻轉",
   balloons: "氣球升空",
 };
 

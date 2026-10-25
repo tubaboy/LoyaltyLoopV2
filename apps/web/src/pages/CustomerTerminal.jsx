@@ -20,8 +20,6 @@ import { api } from "../lib/api.js";
 import { useNetworkStatus } from "../context/NetworkStatusContext.jsx";
 
 const PHONE_LENGTH = 10;
-const COIN_SHOWER_SIZE_MULTIPLIER = 1.45;
-const COIN_FLIP_SIZE_MULTIPLIER = 1.25;
 
 const TERMINAL_THEMES = {
   indigo: {
@@ -103,7 +101,7 @@ export default function CustomerTerminal({ terminal }) {
   const effectCanvasRef = useRef(null);
   const animationFrameRef = useRef(null);
   const particlesRef = useRef([]);
-  const logoImageRef = useRef(null);
+  const collectionEffectTimerRef = useRef(null);
   const audioRefs = useRef({ collection: null, redemption: null, reminder: null });
   const defaultAudioRefs = useRef({ collection: null, redemption: null });
   const resetTimerRef = useRef(null);
@@ -116,6 +114,7 @@ export default function CustomerTerminal({ terminal }) {
   const [redemptionCount, setRedemptionCount] = useState(0);
   const [options, setOptions] = useState([]);
   const [logoUrl, setLogoUrl] = useState("/logo.png");
+  const [collectionVisualEffect, setCollectionVisualEffect] = useState(null);
   const [screensaverUrl, setScreensaverUrl] = useState("");
   const [isScreensaverActive, setIsScreensaverActive] = useState(false);
   const [isReminding, setIsReminding] = useState(false);
@@ -273,18 +272,9 @@ export default function CustomerTerminal({ terminal }) {
     };
   }, [terminal?.collection_sound_asset_id, terminal?.redemption_sound_asset_id]);
 
-  useEffect(() => {
-    const image = new Image();
-    image.onload = () => { logoImageRef.current = image; };
-    image.onerror = () => { logoImageRef.current = null; };
-    image.src = logoUrl;
-    return () => {
-      if (logoImageRef.current === image) logoImageRef.current = null;
-    };
-  }, [logoUrl]);
-
   useEffect(() => () => {
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (collectionEffectTimerRef.current) window.clearTimeout(collectionEffectTimerRef.current);
     const canvas = effectCanvasRef.current;
     const context = canvas?.getContext("2d");
     if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
@@ -292,8 +282,11 @@ export default function CustomerTerminal({ terminal }) {
 
   function clearVisualEffect() {
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (collectionEffectTimerRef.current) window.clearTimeout(collectionEffectTimerRef.current);
     animationFrameRef.current = null;
+    collectionEffectTimerRef.current = null;
     particlesRef.current = [];
+    setCollectionVisualEffect(null);
     const canvas = effectCanvasRef.current;
     const context = canvas?.getContext("2d");
     if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
@@ -316,114 +309,13 @@ export default function CustomerTerminal({ terminal }) {
     return { canvas, context, width, height };
   }
 
-  function drawCoin(context, particle) {
-    const radius = 31 * particle.scale;
-    context.save();
-    context.translate(particle.x, particle.y);
-    context.rotate(particle.rotation);
-    context.scale(Math.max(0.08, Math.cos(particle.flip)), 1);
-    context.beginPath();
-    context.arc(0, 0, radius, 0, Math.PI * 2);
-    context.closePath();
-
-    if (logoImageRef.current) {
-      context.save();
-      context.clip();
-      context.drawImage(logoImageRef.current, -radius, -radius, radius * 2, radius * 2);
-      context.restore();
-      context.lineWidth = 4;
-      context.strokeStyle = "#fbbf24";
-      context.stroke();
-    } else {
-      context.fillStyle = "#fbbf24";
-      context.fill();
-      context.lineWidth = 3;
-      context.strokeStyle = "#d97706";
-      context.stroke();
-      context.fillStyle = "#b45309";
-      context.font = `900 ${Math.max(18, radius * 1.1)}px sans-serif`;
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      context.fillText("$", 0, 2);
-    }
-    context.restore();
-  }
-
-  function triggerCoinShower() {
-    const prepared = prepareEffectCanvas();
-    if (!prepared) return;
-    const { context, width, height } = prepared;
+  function triggerCollectionEffect(effect) {
     clearVisualEffect();
-    particlesRef.current = Array.from({ length: 18 }, () => ({
-      x: width / 2,
-      y: height + 40,
-      vx: (Math.random() - 0.5) * 15,
-      vy: -(Math.random() * 9 + 19),
-      gravity: 0.72,
-      rotation: Math.random() * Math.PI * 2,
-      rotationSpeed: (Math.random() - 0.5) * 0.22,
-      flip: Math.random() * Math.PI * 2,
-      flipSpeed: (Math.random() - 0.5) * 0.22,
-      scale: (Math.random() * 0.38 + 0.42) * COIN_SHOWER_SIZE_MULTIPLIER,
-    }));
-
-    const render = () => {
-      context.clearRect(0, 0, width, height);
-      let activeParticles = 0;
-      particlesRef.current.forEach((particle) => {
-        particle.vy += particle.gravity;
-        particle.x += particle.vx;
-        particle.y += particle.vy;
-        particle.rotation += particle.rotationSpeed;
-        particle.flip += particle.flipSpeed;
-        if (particle.y < height + 110) {
-          activeParticles += 1;
-          drawCoin(context, particle);
-        }
-      });
-      if (activeParticles > 0) {
-        animationFrameRef.current = requestAnimationFrame(render);
-      } else {
-        clearVisualEffect();
-      }
-    };
-    render();
-  }
-
-  function triggerCoinFlip() {
-    const prepared = prepareEffectCanvas();
-    if (!prepared) return;
-    const { context, width, height } = prepared;
-    clearVisualEffect();
-    const startTime = performance.now();
-    const duration = 1600;
-    const particle = {
-      x: width / 2,
-      y: height / 2,
-      rotation: 0,
-      flip: 0,
-      scale: 1.05 * COIN_FLIP_SIZE_MULTIPLIER,
-    };
-
-    const render = (now) => {
-      const progress = Math.min((now - startTime) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      context.clearRect(0, 0, width, height);
-      particle.x = width / 2;
-      particle.y = height / 2;
-      particle.rotation = eased * Math.PI * 2;
-      particle.flip = eased * Math.PI * 6;
-      particle.scale = (1.05 + eased * 1.15) * COIN_FLIP_SIZE_MULTIPLIER;
-      context.globalAlpha = progress > 0.78 ? 1 - ((progress - 0.78) / 0.22) : 1;
-      drawCoin(context, particle);
-      context.globalAlpha = 1;
-      if (progress < 1) {
-        animationFrameRef.current = requestAnimationFrame(render);
-      } else {
-        clearVisualEffect();
-      }
-    };
-    animationFrameRef.current = requestAnimationFrame(render);
+    setCollectionVisualEffect(effect);
+    collectionEffectTimerRef.current = window.setTimeout(() => {
+      collectionEffectTimerRef.current = null;
+      setCollectionVisualEffect(null);
+    }, 4600);
   }
 
   function drawConfettiPiece(context, particle) {
@@ -548,8 +440,7 @@ export default function CustomerTerminal({ terminal }) {
   function triggerFeedback(type) {
     if (terminal.enable_confetti === false) return;
     if (type === "collection") {
-      if (terminal.point_collection_effect === "flip") triggerCoinFlip();
-      else triggerCoinShower();
+      triggerCollectionEffect(terminal.point_collection_effect === "flip" ? "flip" : "halo");
       return;
     }
     if (terminal.redemption_effect === "balloons") triggerBalloons();
@@ -845,6 +736,20 @@ export default function CustomerTerminal({ terminal }) {
   return (
     <main className={`legacy-terminal-page legacy-terminal-page--${step}${isReminding ? " legacy-terminal-page--reminding" : ""}`} style={terminalStyle}>
       <canvas ref={effectCanvasRef} className="legacy-terminal-effects-canvas" aria-hidden="true" />
+      {collectionVisualEffect && (
+        <div className={`legacy-terminal-collection-effect legacy-terminal-collection-effect--${collectionVisualEffect}`} aria-hidden="true">
+          {collectionVisualEffect === "halo" && <>
+            <span className="legacy-terminal-collection-effect__ring" />
+            <span className="legacy-terminal-collection-effect__ring" />
+          </>}
+          <div className="legacy-terminal-collection-effect__coin">
+            <img src={logoUrl} alt="" />
+          </div>
+          {collectionVisualEffect === "halo" && Array.from({ length: 4 }, (_, index) => (
+            <span className="legacy-terminal-collection-effect__sparkle" key={index} />
+          ))}
+        </div>
+      )}
       {isScreensaverActive && screensaverUrl && (
         <div className="legacy-terminal-screensaver" role="button" tabIndex={0} aria-label="關閉待機畫面" onClick={dismissScreensaver} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") dismissScreensaver(); }}>
           <img src={screensaverUrl} alt="分店待機畫面" />

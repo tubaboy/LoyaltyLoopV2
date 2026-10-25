@@ -625,6 +625,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
 /* Legacy terminal experience: the V2 API powers the flow, while this layer preserves the old kiosk presentation. */
 .legacy-terminal-effects-canvas { position: fixed; z-index: 55; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+.legacy-terminal-collection-effect { position: fixed; z-index: 56; inset: 0; display: grid; place-items: center; overflow: hidden; perspective: 900px; pointer-events: none; }
+.legacy-terminal-collection-effect__coin { position: relative; z-index: 2; display: grid; width: clamp(136px, 30vw, 208px); aspect-ratio: 1; place-items: center; border: 9px solid #fbbf24; border-radius: 50%; background: linear-gradient(145deg, #fff7cc 0%, #facc15 52%, #d97706 100%); box-shadow: 0 12px 26px rgb(120 53 15 / 0.28), inset 0 0 0 4px rgb(255 255 255 / 0.66); transform-style: preserve-3d; backface-visibility: hidden; }
+.legacy-terminal-collection-effect__coin img { display: block; width: 72%; height: 72%; border: 4px solid #fff8db; border-radius: 50%; object-fit: cover; backface-visibility: hidden; }
+.legacy-terminal-collection-effect--flip .legacy-terminal-collection-effect__coin { animation: legacy-terminal-logo-coin-flip 4.5s cubic-bezier(0.2, 0.75, 0.25, 1) both; }
+.legacy-terminal-collection-effect--halo .legacy-terminal-collection-effect__coin { animation: legacy-terminal-logo-coin-pop 4.5s cubic-bezier(0.2, 0.75, 0.25, 1) both; }
+.legacy-terminal-collection-effect__ring { position: absolute; width: clamp(176px, 42vw, 292px); aspect-ratio: 1; border: 5px solid rgb(250 204 21 / 0.86); border-radius: 50%; opacity: 0; transform: scale(0.62); animation: legacy-terminal-logo-ring 3.9s ease-out both; }
+.legacy-terminal-collection-effect__ring:nth-of-type(2) { animation-delay: 250ms; }
+.legacy-terminal-collection-effect__sparkle { position: absolute; top: 50%; left: 50%; width: 19px; height: 19px; background: linear-gradient(transparent 42%, #fbbf24 42% 58%, transparent 58%), linear-gradient(90deg, transparent 42%, #fbbf24 42% 58%, transparent 58%); opacity: 0; animation: legacy-terminal-logo-sparkle 3.4s ease-out both; }
+.legacy-terminal-collection-effect__sparkle:nth-of-type(4) { animation-delay: 120ms; }
+.legacy-terminal-collection-effect__sparkle:nth-of-type(5) { animation-delay: 240ms; }
+.legacy-terminal-collection-effect__sparkle:nth-of-type(6) { animation-delay: 360ms; }
+.legacy-terminal-collection-effect__sparkle:nth-of-type(3) { --sparkle-x: -92px; --sparkle-y: -58px; }
+.legacy-terminal-collection-effect__sparkle:nth-of-type(4) { --sparkle-x: 92px; --sparkle-y: -58px; }
+.legacy-terminal-collection-effect__sparkle:nth-of-type(5) { --sparkle-x: -92px; --sparkle-y: 58px; }
+.legacy-terminal-collection-effect__sparkle:nth-of-type(6) { --sparkle-x: 92px; --sparkle-y: 58px; }
+.legacy-terminal-collection-effect--halo .legacy-terminal-collection-effect__sparkle { animation-name: legacy-terminal-logo-sparkle; }
+.legacy-terminal-collection-effect--flip .legacy-terminal-collection-effect__ring,
+.legacy-terminal-collection-effect--flip .legacy-terminal-collection-effect__sparkle { display: none; }
+@keyframes legacy-terminal-logo-coin-flip { 0% { opacity: 0; transform: translateY(34px) scale(0.58) rotateY(0); } 14% { opacity: 1; } 48% { transform: translateY(-12px) scale(1.12) rotateY(360deg); } 78% { transform: translateY(0) scale(1.02) rotateY(630deg); } 100% { opacity: 0; transform: translateY(5px) scale(0.9) rotateY(720deg); } }
+@keyframes legacy-terminal-logo-coin-pop { 0% { opacity: 0; transform: scale(0.62); } 24% { opacity: 1; transform: scale(1.1); } 72% { transform: scale(0.98); } 100% { opacity: 0; transform: scale(0.94); } }
+@keyframes legacy-terminal-logo-ring { 0% { opacity: 0.9; transform: scale(0.62); } 100% { opacity: 0; transform: scale(1.48); } }
+@keyframes legacy-terminal-logo-sparkle { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.25) rotate(0); } 38% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(-50% + var(--sparkle-x)), calc(-50% + var(--sparkle-y))) scale(1.12) rotate(45deg); } }
 .legacy-terminal-page {
   position: relative;
   display: flex;
