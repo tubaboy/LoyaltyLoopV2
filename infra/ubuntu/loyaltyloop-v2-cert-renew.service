@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew LoyaltyLoopV2 IP TLS certificate
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=david
+WorkingDirectory=/opt/loyaltyloop-v2-ubuntu
+ExecStart=/bin/bash /opt/loyaltyloop-v2-ubuntu/infra/ubuntu/renew-ip-certificate.sh

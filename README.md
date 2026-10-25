@@ -29,10 +29,8 @@ docker compose up --build -d
 - API 健康檢查：<http://localhost:3000/healthz>
 - API 就緒檢查：<http://localhost:3000/readyz>
 - PostgreSQL：`localhost:55432`
-- MinIO API：<http://localhost:19000>
-- MinIO 管理介面：<http://localhost:19001>
 
-PostgreSQL、MinIO、API 與 Web 的對外埠僅綁定 `127.0.0.1`，只供本機使用。
+PostgreSQL、API 與 Web 的對外埠僅綁定 `127.0.0.1`，只供本機使用。上傳圖片與音效由 API 寫入 Docker named volume `media_data`，不需要 MinIO 或其他物件儲存服務。
 
 資料庫初始化腳本只會建立 V2 schema，不會連線或匯入舊 LoyaltyLoop 系統。
 
@@ -126,7 +124,9 @@ Terminal 支援會員查詢、累加點數、受每日上限限制的一般兌�
 docker compose down
 ```
 
-`docker compose down` 會刻意保留具名磁碟區。只有在明確確認本機 V2 資料庫與物件儲存測試資料可以丟棄時，才移除這些磁碟區。
+`docker compose down` 會刻意保留 PostgreSQL 與媒體檔案具名磁碟區。只有在明確確認本機 V2 測試資料可以丟棄時，才移除這些磁碟區。
+
+Railway 部署時，請將 Volume 掛載至 API 服務的 `/var/lib/loyaltyloop/media`；API 會將上傳檔案直接寫入此持久化路徑。Volume 與服務所在區域綁定，API 服務需使用單一副本；若未掛載持久化 Volume，容器重建後上傳檔案可能遺失。資料庫與媒體檔案仍需各自設定備份。
 
 ## PWA（Android 門市平板）
 

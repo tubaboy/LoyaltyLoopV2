@@ -18,18 +18,6 @@ services:
       timeout: 5s
       retries: 20
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-loyaltyloop_local}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-    ports:
-      - "127.0.0.1:19000:9000"
-      - "127.0.0.1:19001:9001"
-    volumes:
-      - minio_data:/data
-
   api:
     build:
       context: ./apps/api
@@ -39,21 +27,15 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-loyaltyloop}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-loyaltyloop_v2}
       CORS_ORIGIN: http://localhost:5173
-      S3_ENDPOINT: http://minio:9000
-      S3_REGION: us-east-1
-      S3_BUCKET: loyaltyloop-v2
-      S3_FORCE_PATH_STYLE: "true"
-      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-loyaltyloop_local}
-      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      LOCAL_STORAGE_PATH: /var/lib/loyaltyloop/media
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
       - ./apps/api/src:/app/src
+      - media_data:/var/lib/loyaltyloop/media
     depends_on:
       db:
         condition: service_healthy
-      minio:
-        condition: service_started
     restart: unless-stopped
 
   web:
@@ -87,5 +69,5 @@ services:
 
 volumes:
   postgres_data:
-  minio_data:
+  media_data:
 

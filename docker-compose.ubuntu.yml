@@ -1,0 +1,80 @@
+name: loyaltyloop-v2-ubuntu
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: loyaltyloop-v2-db
+    environment:
+      POSTGRES_DB: loyaltyloop_v2
+      POSTGRES_USER: loyaltyloop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loyaltyloop -d loyaltyloop_v2"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: loyaltyloop-v2-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://loyaltyloop:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/loyaltyloop_v2
+      COOKIE_SECURE: "true"
+      CORS_ORIGIN: https://122.116.231.49
+      LOCAL_STORAGE_PATH: /var/lib/loyaltyloop/media
+    volumes:
+      - media_data:/var/lib/loyaltyloop/media
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.ubuntu
+    container_name: loyaltyloop-v2-proxy
+    environment:
+      API_UPSTREAM: http://api:3000
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - letsencrypt:/etc/letsencrypt:ro
+      - acme_webroot:/var/www/certbot:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:v5.4.0
+    profiles: ["certificates"]
+    network_mode: host
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - acme_webroot:/var/www/certbot
+    entrypoint: ["certbot"]
+
+volumes:
+  postgres_data:
+    name: loyaltyloop_v2_ubuntu_postgres
+  media_data:
+    name: loyaltyloop_v2_ubuntu_media
+  letsencrypt:
+    name: loyaltyloop_v2_ubuntu_letsencrypt
+  acme_webroot:
+    name: loyaltyloop_v2_ubuntu_acme

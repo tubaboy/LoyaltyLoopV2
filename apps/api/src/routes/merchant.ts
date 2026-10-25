@@ -185,7 +185,7 @@ export function createMerchantRouter(pool: pg.Pool): Router {
 
       const extension = imageExtensions[file.mimetype];
       objectKey = `${branch.merchant_id}/${branchId}/${kind}/${randomUUID()}.${extension}`;
-      await putObject(objectKey, file.buffer, file.mimetype);
+      await putObject(objectKey, file.buffer);
 
       const asset = await withTransaction(async (client) => {
         await client.query(
@@ -278,7 +278,7 @@ export function createMerchantRouter(pool: pg.Pool): Router {
       }
 
       objectKey = `${branch.merchant_id}/${branchId}/${kind}/${randomUUID()}.mp3`;
-      await putObject(objectKey, file.buffer, "audio/mpeg");
+      await putObject(objectKey, file.buffer);
 
       const asset = await withTransaction(async (client) => {
         await client.query(

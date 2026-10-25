@@ -1,24 +1,16 @@
-import {
-  CreateBucketCommand,
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadBucketCommand,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
+import { createReadStream } from "node:fs";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 
-const bucket = process.env.S3_BUCKET ?? "loyaltyloop-v2";
-const client = new S3Client({
-  endpoint: process.env.S3_ENDPOINT ?? "http://localhost:19000",
-  region: process.env.S3_REGION ?? "us-east-1",
-  forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
-  credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "loyaltyloop_local",
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "loyaltyloop_local_only",
-  },
-});
+const localStorageRoot = path.resolve(process.env.LOCAL_STORAGE_PATH ?? "./uploads");
 
-let bucketReady: Promise<void> | null = null;
+function localObjectPath(objectKey: string): string {
+  const resolvedPath = path.resolve(localStorageRoot, objectKey);
+  if (!resolvedPath.startsWith(`${localStorageRoot}${path.sep}`)) {
+    throw new Error("INVALID_STORAGE_OBJECT_KEY");
+  }
+  return resolvedPath;
+}
 
 export type StoredObject = {
   body: NodeJS.ReadableStream;
@@ -26,55 +18,25 @@ export type StoredObject = {
   contentLength: number | undefined;
 };
 
-async function ensureBucket(): Promise<void> {
-  if (!bucketReady) {
-    bucketReady = (async () => {
-      try {
-        await client.send(new HeadBucketCommand({ Bucket: bucket }));
-      } catch (error) {
-        const code = (error as { name?: string; Code?: string }).name ?? (error as { Code?: string }).Code;
-        if (code !== "NotFound" && code !== "NoSuchBucket") throw error;
-        await client.send(new CreateBucketCommand({ Bucket: bucket }));
-      }
-    })().catch((error) => {
-      bucketReady = null;
-      throw error;
-    });
-  }
-
-  await bucketReady;
-}
-
 export async function putObject(
   objectKey: string,
   body: Buffer,
-  contentType: string,
 ): Promise<void> {
-  await ensureBucket();
-  await client.send(new PutObjectCommand({
-    Bucket: bucket,
-    Key: objectKey,
-    Body: body,
-    ContentType: contentType,
-  }));
+  const destination = localObjectPath(objectKey);
+  await mkdir(path.dirname(destination), { recursive: true });
+  await writeFile(destination, body, { flag: "wx" });
 }
 
 export async function getObject(objectKey: string): Promise<StoredObject> {
-  await ensureBucket();
-  const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: objectKey }));
-  const body = result.Body as NodeJS.ReadableStream | undefined;
-  if (!body || typeof (body as NodeJS.ReadableStream & { pipe?: unknown }).pipe !== "function") {
-    throw new Error("STORAGE_OBJECT_STREAM_UNAVAILABLE");
-  }
-
+  const destination = localObjectPath(objectKey);
+  const details = await stat(destination);
   return {
-    body,
-    contentType: result.ContentType,
-    contentLength: result.ContentLength,
+    body: createReadStream(destination),
+    contentType: undefined,
+    contentLength: details.size,
   };
 }
 
 export async function deleteObject(objectKey: string): Promise<void> {
-  await ensureBucket();
-  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }));
+  await rm(localObjectPath(objectKey), { force: true });
 }

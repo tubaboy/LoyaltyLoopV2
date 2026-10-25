@@ -108,7 +108,6 @@ export default function CustomerTerminal({ terminal }) {
   const defaultAudioRefs = useRef({ collection: null, redemption: null });
   const resetTimerRef = useRef(null);
   const reminderTimerRef = useRef(null);
-  const reminderHideTimerRef = useRef(null);
   const screensaverTimerRef = useRef(null);
   const screensaverActiveRef = useRef(false);
   const [step, setStep] = useState("lookup");
@@ -564,9 +563,7 @@ export default function CustomerTerminal({ terminal }) {
 
   function clearReminderTimer() {
     if (reminderTimerRef.current) window.clearTimeout(reminderTimerRef.current);
-    if (reminderHideTimerRef.current) window.clearTimeout(reminderHideTimerRef.current);
     reminderTimerRef.current = null;
-    reminderHideTimerRef.current = null;
     setIsReminding(false);
   }
 
@@ -603,11 +600,6 @@ export default function CustomerTerminal({ terminal }) {
     if (step !== "action" || resetTimerRef.current || !positiveSeconds(terminal?.reminder_interval)) return;
     playFeedbackSound("reminder");
     setIsReminding(true);
-    if (reminderHideTimerRef.current) window.clearTimeout(reminderHideTimerRef.current);
-    reminderHideTimerRef.current = window.setTimeout(() => {
-      reminderHideTimerRef.current = null;
-      setIsReminding(false);
-    }, 2200);
     startReminderTimer();
   }
 
